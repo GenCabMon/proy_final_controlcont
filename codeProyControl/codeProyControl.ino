@@ -44,15 +44,19 @@ void movFW();
 void rotRight();
 void rotLeft();
 void stopMov(int);
+int findMinValue(int arr[], int);
 
 void setup() {
   // Initialize elements of the matrix to cero
   for (int i = 0; i < ROWS * 2 + 1; i+2) {
     for (int j = 0; j < COLS * 2 + 1; j+2) {
-      maze[i][j] = 0;
+      if (i % 2 == 0 || j % 2 == 0) {
+        maze[i][j] = 1;
+      } else {
+        maze[i][j] = 0;
+      }
     }
-  }
-  maze[finalPos[0]][finalPos[1]] = 1;                
+  }                
   Serial.begin(9600);
   // Initialize the 2 pins of each ultrasonic sensor
   pinMode(PechoL, INPUT);
@@ -95,7 +99,7 @@ void loop() {
   	}
     countSens += 1;
   } while (countSens < numSens);
-  int mazePos = {0,0,0,0};
+  int mazePos[] = {0,0,0,0};
 
   // Flooding current position
   maze[currPos[0]][currPos[1]] = maze[currPos[0]][currPos[1]] + 1;
@@ -112,15 +116,76 @@ void loop() {
   if (currPos[1] < ROWS * 2 || maze[currPos[0]][currPos[1] + 1] != -1) {
     maze[currPos[0]][currPos[1] + 2] = maze[currPos[0]][currPos[1] + 2] + 1;
   }
+  // These values turn negative in case they are not accesible in the next move of the robot
+  mazePos[0] = maze[currPos[0] - 2][currPos[1]] * maze[currPos[0] - 1][currPos[1]]; // North adjacent box value
+  mazePos[1] = maze[currPos[0]][currPos[1] + 2] * maze[currPos[0]][currPos[1] + 1]; // East adjacent box value
+  mazePos[2] = maze[currPos[0] + 2][currPos[1]] * maze[currPos[0] + 1][currPos[1]]; // South adjacent box value
+  mazePos[3] = maze[currPos[0]][currPos[1] - 2] * maze[currPos[0]][currPos[1] - 1]; // West adjacent box value
   // Deciding on which path to take
-  
+  int minValPos = findMinValue(mazePos, 4);
+  // Define time it takes to make each movement of the robot
+  int timeRotLeft = 1000;
+  int timeRotRight = 1200;
+  int timeMovFW = 2000;
+  // Rotation of the car
+  if (minValPos == 0) {
+    if(facingDir == 1) {
+      rotLeft();
+      stopMov(timeRotLeft);
+    } else if (facingDir == 2) {
+      rotRight();
+      stopMov(2*timeRotRight);
+    } else if (facingDir == 3) {
+      rotRight();
+      stopMov(timeRotRight);
+    }
+    currPos[0] = currPos[0] - 2;
+  } else if (minValPos == 1) {
+    if (facingDir == 0) {
+      rotRight();
+      stopMov(timeRotRight);
+    } else if (facingDir == 2) {
+      rotLeft();
+      stopMov(timeRotLeft);
+    } else if (facingDir == 3) {
+      rotRight();
+      stopMov(2*timeRotRight);
+    }
+    currPos[1] = currPos[1] + 2;
+  } else if (minValPos == 2) {
+    if (facingDir == 0) {
+      rotLeft();
+      stopMov(2*timeRotRight);
+    } else if(facingDir == 1) {
+      rotRight();
+      stopMov(timeRotRight);
+    } else if (facingDir == 3) {
+      rotLeft();
+      stopMov(timeRotLeft);
+    }
+    currPos[0] = currPos[0] + 2;
+  } else if (minValPos == 3) {
+    if (facingDir == 0) {
+      rotLeft();
+      stopMov(timeRotLeft);
+    } else if(facingDir == 1) {
+      rotRight();
+      stopMov(2*timeRotRight);
+    } else if (facingDir == 2) {
+      rotRight();
+      stopMov(timeRotRight);
+    }
+    currPos[1] = currPos[1] - 2;
+  }
+  facingDir = minValPos;
+  movFW();
+  stopMov(timeMovFW);
   delay(100);
   countSens = 0;
-  
   if(currPos == finalPos){
     while(true){
       Serial.println("Goal has been reached");
-      delay(10000);
+      stopMov(500);
     }
   }
 }
@@ -175,4 +240,18 @@ void stopMov(int timeBeforeStop)
   digitalWrite(2,LOW);
   digitalWrite(5,LOW);
   digitalWrite(4,LOW);
+}
+int findMinValue(int arr[], int size) {
+    int minValue = 100000;  // Asumir que el primer elemento es el mínimo
+    if (arr[0] >= 0) {
+      minValue = arr[0];
+    }
+    int pos = 0;
+    for (int i = 1; i < size; i++) {
+        if (arr[i] < minValue) {
+            minValue = arr[i];  // Actualizar el valor mínimo
+            pos = i;
+        }
+    }
+    return pos;
 }
