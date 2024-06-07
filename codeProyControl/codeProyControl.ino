@@ -1,45 +1,53 @@
+/*
+
+  Continuous Control Systems Project - Solving a maze via flooding algorithm implementation
+  Edited by: Juan Diego Cabrera Moncada
+  Robot: Tesla's Apprentice
+  Institution: Universidad de Antioquia
+  Department: Electronics and Telecommunication Engineering Department
+  Last Update: 07/06/2024
+  GitHub Repository: https://github.com/GenCabMon/proy_final_controlcont.git
+  Tinkercad Simulation: https://www.tinkercad.com/things/cVFG89RdUjY-proycontrolcont?sharecode=giPTgEYkCxdPuUcanXo-EoNEEkJftFm8I4mQWGgjWA0
+
+*/
+
 #define PechoL 12
 #define PtrigL 13
-#define PechoR 10
-#define PtrigR 11
-#define PechoF 8
-#define PtrigF 9
+#define PechoF 10
+#define PtrigF 11
+#define PechoR 8
+#define PtrigR 9
 
 // Maze size
 const int ROWS = 6;
 const int COLS = 4;
 int maze[ROWS*2 + 1][COLS*2 + 1]; // 2D representation of the labyrinth
 
-// unit per grid in cm
-const int unit = 30;
-
 // Distance between sensors and walls
-const int distSensL = 10; // Left Sensor
-const int distSensR = 10; // Right Sensor
-const int distSensF = 10; // Front Sensor
-int distSens[] = {distSensL, distSensR, distSensF};
+const int distSensL = 40; // Left Sensor
+const int distSensF = 40; // Front Sensor
+const int distSensR = 40; // Right Sensor
+int distSens[] = {distSensL, distSensF, distSensR};
 
 // Start and Goal Positions
-int currPos[] = {0,0}; // Initializes at starting position
-int movDone[] = {0,0}; // To know which move has been pulled off
-int finalPos[] = {6,8}; // Final position of the robot
+int currPos[] = {11,7}; // Initializes at starting position
+int finalPos[] = {1,1}; // Final position of the car
 
 // Initialization of readings from Ultrasonic Sensors (4 different positions)
 bool ultrasonicReads[] = {0,0,0,0}; // Left, Right, Front, Back
 
-// To know the direction the robot is facing
-int facingDir = 2; // North = 0, East = 1, South = 2, West = 3
-
-// Times of rotation and translation
-int movDelay = 2000;
-int rotateDelay = 1500;
+// To know the direction the car is facing
+int facingDir = 0; // North = 0, East = 1, South = 2, West = 3
 
 double duration, distance;
 int numSens = 3;
 int countSens = 0;
 
+// Set to True if there is a wall behind the car in the starting position
+bool isAWallBehind = true;
+
 // Functions
-double MeasureDist(int, int, int);
+bool MeasureDist(int, int, int);
 void movFW();
 void rotRight();
 void rotLeft();
@@ -47,24 +55,39 @@ void stopMov(int);
 int findMinValue(int arr[], int);
 
 void setup() {
+  Serial.begin(9600); //Booting up serial monitor for testing
+  
   // Initialize elements of the matrix to cero
-  for (int i = 0; i < ROWS * 2 + 1; i+2) {
-    for (int j = 0; j < COLS * 2 + 1; j+2) {
+  for (int i = 0; i < ROWS * 2 + 1; i++) {
+    for (int j = 0; j < COLS * 2 + 1; j++) {
       if (i % 2 == 0 || j % 2 == 0) {
         maze[i][j] = 1;
       } else {
         maze[i][j] = 0;
       }
     }
-  }                
-  Serial.begin(9600);
+    Serial.println(" ");
+  }
+  
+  /* Additional configuration to know if the car is placed
+  	 with a wall behind it.
+  */
+  if (isAWallBehind) {
+    if(facingDir == 0){
+      maze[currPos[0] + 1][currPos[1]] = -1;
+    } else if (facingDir == 1) {
+      maze[currPos[0]][currPos[1] - 1] = -1;      
+    } else if (facingDir == 2) {
+      maze[currPos[0] - 1][currPos[1]] = -1;      
+    } else {
+      maze[currPos[0]][currPos[1] + 1] = -1;      
+    }
+  }
   // Initialize the 2 pins of each ultrasonic sensor
   pinMode(PechoL, INPUT);
   pinMode(PtrigL, OUTPUT);    
-  
   pinMode(PechoR, INPUT);     
   pinMode(PtrigR, OUTPUT);
-  
   pinMode(PechoF, INPUT);
   pinMode(PtrigF, OUTPUT);
 
@@ -72,21 +95,17 @@ void setup() {
   pinMode(2,OUTPUT);
   pinMode(3,OUTPUT);
   pinMode(4,OUTPUT);
-  pinMode(5,OUTPUT); 
+  pinMode(5,OUTPUT);
   }
   
 void loop() {
   
-  // Updating current position of the robot
-  for (int updatePos = 0; updatePos < 2; updatePos++){
-    currPos[updatePos] = currPos[updatePos] + movDone[updatePos];
-  }
   do{
   // Reading the ultrasonic sensors one by one
     int posSens = (countSens + facingDir) % 4;
     ultrasonicReads[posSens] = MeasureDist(PtrigL-2*countSens,PechoL-2*countSens, distSens[countSens]);
     // Detecting walls
-    if (ultrasonicReads[countSens]) {
+    if (ultrasonicReads[posSens]) {
        if(posSens == 0) {
         maze[currPos[0]][currPos[1]-1] = -1;
        } else if (posSens == 1) {
@@ -98,36 +117,42 @@ void loop() {
        }
   	}
     countSens += 1;
+    delay(50); // A delay between readings to secure good measurements
   } while (countSens < numSens);
-  int mazePos[] = {0,0,0,0};
-
+  
+  int mazePos[] = {-1,-1,-1,-1}; //Car's adjacent cells
   // Flooding current position
   maze[currPos[0]][currPos[1]] = maze[currPos[0]][currPos[1]] + 1;
   // Flooding adjacent cells
-  if (currPos[0] > 1 || maze[currPos[0] - 1][currPos[1]] != -1) {
+  if (currPos[0] > 1 && maze[currPos[0] - 1][currPos[1]] != -1) {
     maze[currPos[0] - 2][currPos[1]] = maze[currPos[0] - 2][currPos[1]] + 1;
-  }
-  if (currPos[1] > 1 || maze[currPos[0]][currPos[1] - 1] != -1) {
-    maze[currPos[0]][currPos[1] - 2] = maze[currPos[0]][currPos[1] - 2] + 1;
-  }
-  if (currPos[0] < COLS * 2 || maze[currPos[0] + 1][currPos[1]] != -1) {
-    maze[currPos[0] + 2][currPos[1]] = maze[currPos[0] + 2][currPos[1]] + 1;
-  }
-  if (currPos[1] < ROWS * 2 || maze[currPos[0]][currPos[1] + 1] != -1) {
+    mazePos[0] = maze[currPos[0] - 2][currPos[1]];
+  } // Upper Row
+  if (currPos[1] < COLS * 2 && maze[currPos[0]][currPos[1] + 1] != -1) { 			
     maze[currPos[0]][currPos[1] + 2] = maze[currPos[0]][currPos[1] + 2] + 1;
-  }
-  // These values turn negative in case they are not accesible in the next move of the robot
-  mazePos[0] = maze[currPos[0] - 2][currPos[1]] * maze[currPos[0] - 1][currPos[1]]; // North adjacent box value
-  mazePos[1] = maze[currPos[0]][currPos[1] + 2] * maze[currPos[0]][currPos[1] + 1]; // East adjacent box value
-  mazePos[2] = maze[currPos[0] + 2][currPos[1]] * maze[currPos[0] + 1][currPos[1]]; // South adjacent box value
-  mazePos[3] = maze[currPos[0]][currPos[1] - 2] * maze[currPos[0]][currPos[1] - 1]; // West adjacent box value
+  	mazePos[1] = maze[currPos[0]][currPos[1] + 2];
+  } // Right Column
+  if (currPos[0] < ROWS * 2 && maze[currPos[0] + 1][currPos[1]] != -1) { 	
+    maze[currPos[0] + 2][currPos[1]] = maze[currPos[0] + 2][currPos[1]] + 1;
+  	mazePos[2] = maze[currPos[0] + 2][currPos[1]];
+  } // Lower Row
+  if (currPos[1] > 1 && maze[currPos[0]][currPos[1] - 1] != -1) {
+    maze[currPos[0]][currPos[1] - 2] = maze[currPos[0]][currPos[1] - 2] + 1; 
+  	mazePos[3] = maze[currPos[0]][currPos[1] - 2];
+  } // Left Column
+  
   // Deciding on which path to take
   int minValPos = findMinValue(mazePos, 4);
-  // Define time it takes to make each movement of the robot
+  delay(200);
+  // Define the time it takes to make each movement of the car
   int timeRotLeft = 1000;
   int timeRotRight = 1200;
   int timeMovFW = 2000;
-  // Rotation of the car
+  /* Rotation of the car:
+  		Depends on the minimum value between the adjacent
+        available cells the car can go to, and the direction
+        the car is currently pointing at.
+  */
   if (minValPos == 0) {
     if(facingDir == 1) {
       rotLeft();
@@ -177,20 +202,22 @@ void loop() {
     }
     currPos[1] = currPos[1] - 2;
   }
-  facingDir = minValPos;
+  facingDir = minValPos; // Updating the current direction the car is facing
+  // Movement of the car
   movFW();
   stopMov(timeMovFW);
-  delay(100);
   countSens = 0;
-  if(currPos == finalPos){
+  
+  // Checking if the car is currently at the final position
+  if(currPos[0] == finalPos[0] && currPos[1] == finalPos[1]){
     while(true){
       Serial.println("Goal has been reached");
-      stopMov(500);
+      delay(500);
     }
   }
 }
 
-double MeasureDist(int sensorTrig, int sensorEcho, int distSens)
+bool MeasureDist(int sensorTrig, int sensorEcho, int distSens)
 {
   /* Needs the ping assignment of the ultrasonic sensor and the distance expected
   between the sensor and a wall. Returns true if it detects a wall, false otherwise*/
@@ -213,6 +240,8 @@ double MeasureDist(int sensorTrig, int sensorEcho, int distSens)
 
 void movFW()
 {
+  // Uses the L298N inputs to make the car move forward
+  Serial.println("movFW");
   digitalWrite(3,LOW); //IN1
   digitalWrite(2,HIGH); //IN2
   digitalWrite(5,LOW); //IN3
@@ -220,6 +249,10 @@ void movFW()
 }
 void rotRight()
 {
+  /* Uses the L298N inputs to make the car rotate 
+  on its own axis in a clockwise direction.
+  */
+  Serial.println("rotRight");
   digitalWrite(3,LOW); //IN1
   digitalWrite(2,HIGH); //IN2
   digitalWrite(5,LOW); //IN3
@@ -228,6 +261,10 @@ void rotRight()
 }
 void rotLeft()
 {
+  /* Uses the L298N inputs to make the car rotate 
+  on its own axis in a counterclockwise direction.
+  */
+  Serial.println("rotLeft");
   digitalWrite(3,LOW);
   digitalWrite(2,HIGH);
   digitalWrite(5,LOW);
@@ -235,6 +272,11 @@ void rotLeft()
 }
 void stopMov(int timeBeforeStop)
 {
+  /* Uses the L298N inputs to stop the car's current
+  	 moving action after a delay received as a parameter.
+  */
+  Serial.println("stopMov");
+  Serial.println(timeBeforeStop);
   delay(timeBeforeStop);
   digitalWrite(3,LOW);
   digitalWrite(2,LOW);
@@ -242,16 +284,21 @@ void stopMov(int timeBeforeStop)
   digitalWrite(4,LOW);
 }
 int findMinValue(int arr[], int size) {
-    int minValue = 100000;  // Asumir que el primer elemento es el mínimo
-    if (arr[0] >= 0) {
-      minValue = arr[0];
+  /* Receives a list of values and its size. Returns the position
+  	 of the minimum nonnegative value of that list.
+  */
+  int minValue = 31200;
+  // If there is no wall, assume first element as the minimum value
+  if (arr[0] >= 0) {
+    minValue = arr[0];
+  }
+  int pos = 0;
+  // Updating the minimum value
+  for (int i = 1; i < size; i++) {
+  	if (arr[i] < minValue && arr[i] >= 0) {
+    	minValue = arr[i];
+        pos = i;
     }
-    int pos = 0;
-    for (int i = 1; i < size; i++) {
-        if (arr[i] < minValue) {
-            minValue = arr[i];  // Actualizar el valor mínimo
-            pos = i;
-        }
-    }
-    return pos;
+  }
+  return pos;
 }
