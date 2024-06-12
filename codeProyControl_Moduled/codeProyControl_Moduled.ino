@@ -59,12 +59,12 @@ double duration, distance;
 int numSens = 3;
 int countSens = 0;
 int countWalls = 0;
-int lastBifurcation[] = {1,1}; //Initialized at the same value of final position
+int lastBifurcation[] = {1,1}; //Initialized at the same value of the final position
 
 // Set to True if there is a wall behind the car in the starting position
 bool isAWallBehind = true;
 
-bool isBifurcationFound = true; // Used to avoid dead end path loops generation
+bool isBifurcationFound = true; //Used to avoid dead end path loops generation
 
 // Functions
 bool MeasureDist(int, int, int);
@@ -73,36 +73,16 @@ void rotRight();
 void rotLeft();
 void stopMov(int);
 int findMinValue(int arr[], int);
+void initializeMaze();
+void ultrasonicSensorsReading();
+void floodFilling(int* mazePos);
+void robotShifting(int);
+void avoidPathLooping();
 
 void setup() {
   Serial.begin(9600); //Booting up serial monitor for testing
-  
-  // Initialize elements of the matrix to cero
-  for (int i = 0; i < ROWS * 2 + 1; i++) {
-    for (int j = 0; j < COLS * 2 + 1; j++) {
-      if (i % 2 == 0 || j % 2 == 0) {
-        maze[i][j] = 1;
-      } else {
-        //maze[i][j] = 0;
-        maze[i][j] = i - finalPos[0] + j - finalPos[1];
-      }
-    }
-  }
-  
-  /* Additional configuration to know if the car is placed
-  	 with a wall behind it.
-  */
-  if (isAWallBehind) {
-    if(facingDir == 0){
-      maze[currPos[0] + 1][currPos[1]] = -1;
-    } else if (facingDir == 1) {
-      maze[currPos[0]][currPos[1] - 1] = -1;      
-    } else if (facingDir == 2) {
-      maze[currPos[0] - 1][currPos[1]] = -1;      
-    } else {
-      maze[currPos[0]][currPos[1] + 1] = -1;      
-    }
-  }
+
+  initializeMaze();
   // Initialize the 2 pins of each ultrasonic sensor
   pinMode(PechoL, INPUT);
   pinMode(PtrigL, OUTPUT);    
@@ -117,138 +97,27 @@ void setup() {
   pinMode(6,OUTPUT);
   pinMode(7,OUTPUT);
 
+  // Initialize pins for PWM control
   pinMode(ENA, OUTPUT);
   pinMode(ENB, OUTPUT);
   }
   
 void loop() {
-  short int countWalls = 0;
-  do{
-  // Reading the ultrasonic sensors one by one
-    int posSens = (countSens + facingDir) % 4;
-    ultrasonicReads[posSens] = MeasureDist(PtrigL-2*countSens,PechoL-2*countSens, distSens[countSens]);
-    // Detecting walls
-    if (ultrasonicReads[posSens]) {
-       if(posSens == 0) {
-        maze[currPos[0]][currPos[1]-1] = -1;
-       } else if (posSens == 1) {
-        maze[currPos[0]-1][currPos[1]] = -1;
-       } else if (posSens == 2) {
-        maze[currPos[0]][currPos[1]+1] = -1;
-       } else if (posSens == 3) {
-        maze[currPos[0]+1][currPos[1]] = -1;
-       }
-       countWalls += 1;
-  	}
-    countSens += 1;
-    delay(70); // A delay between readings to secure good measurements
-  } while (countSens < numSens);
-
-  //Avoiding dead end path loops
-  if(lastBifurcation[0] == currPos[0] && lastBifurcation[1] == currPos[1]) { //Robot is back to the bifurcation location
-    isBifurcationFound = true;
-  } else if (isBifurcationFound == false) { // Executed while getting out of the dead end path
-    maze[currPos[0]][currPos[1]] += abs(maze[currPos[0]][currPos[1]] - maze[lastBifurcation[0]][lastBifurcation[1]]);
-  }
-  if (countWalls == 1) { // Bifurcation encountered
-    lastBifurcation[0] = currPos[0]; lastBifurcation[1] = currPos[1];
-  } else if(countWalls == 3) { // Dead end found
-    isBifurcationFound = false;
-    maze[currPos[0]][currPos[1]] += abs(maze[currPos[0]][currPos[1]] - maze[lastBifurcation[0]][lastBifurcation[1]]);
-  }
-
-  int mazePos[] = {-1,-1,-1,-1}; //Car's adjacent cells
-  // Flooding current position
-  maze[currPos[0]][currPos[1]] = maze[currPos[0]][currPos[1]] + 1;
-  // Flooding adjacent cells
-  if (currPos[0] > 1 && maze[currPos[0] - 1][currPos[1]] != -1) {
-    maze[currPos[0] - 2][currPos[1]] = maze[currPos[0] - 2][currPos[1]] + 1;
-    mazePos[0] = maze[currPos[0] - 2][currPos[1]];
-  } // Upper Row
-  if (currPos[1] < COLS * 2 && maze[currPos[0]][currPos[1] + 1] != -1) { 			
-    maze[currPos[0]][currPos[1] + 2] = maze[currPos[0]][currPos[1] + 2] + 1;
-  	mazePos[1] = maze[currPos[0]][currPos[1] + 2];
-  } // Right Column
-  if (currPos[0] < ROWS * 2 && maze[currPos[0] + 1][currPos[1]] != -1) { 	
-    maze[currPos[0] + 2][currPos[1]] = maze[currPos[0] + 2][currPos[1]] + 1;
-  	mazePos[2] = maze[currPos[0] + 2][currPos[1]];
-  } // Lower Row
-  if (currPos[1] > 1 && maze[currPos[0]][currPos[1] - 1] != -1) {
-    maze[currPos[0]][currPos[1] - 2] = maze[currPos[0]][currPos[1] - 2] + 1; 
-  	mazePos[3] = maze[currPos[0]][currPos[1] - 2];
-  } // Left Column
   
+  ultrasonicSensorsReading();
+  int mazePos[] = {-1,-1,-1,-1};
+  floodFilling(mazePos);
+  avoidPathLooping(); //Trying to avoid dead end path loops generation
+
   // Deciding on which path to take
   int minValPos = findMinValue(mazePos, 4);
   delay(200);
-  // Define the time it takes to make each movement of the car
-  int timeRotLeft = 1000;
-  int timeRotRight = 1200;
-  int timeMovFW = 1000;
-  /* Rotation of the car:
-  		Depends on the minimum value between the adjacent
-        available cells the car can go to, and the direction
-        the car is currently pointing at.
-  */
-  if (minValPos == 0) {
-    if(facingDir == 1) {
-      rotLeft();
-      stopMov(timeRotLeft);
-    } else if (facingDir == 2) {
-      rotRight();
-      stopMov(2*timeRotRight);
-    } else if (facingDir == 3) {
-      rotRight();
-      stopMov(timeRotRight);
-    }
-    currPos[0] = currPos[0] - 2;
-  } else if (minValPos == 1) {
-    if (facingDir == 0) {
-      rotRight();
-      stopMov(timeRotRight);
-    } else if (facingDir == 2) {
-      rotLeft();
-      stopMov(timeRotLeft);
-    } else if (facingDir == 3) {
-      rotRight();
-      stopMov(2*timeRotRight);
-    }
-    currPos[1] = currPos[1] + 2;
-  } else if (minValPos == 2) {
-    if (facingDir == 0) {
-      rotLeft();
-      stopMov(2*timeRotRight);
-    } else if(facingDir == 1) {
-      rotRight();
-      stopMov(timeRotRight);
-    } else if (facingDir == 3) {
-      rotLeft();
-      stopMov(timeRotLeft);
-    }
-    currPos[0] = currPos[0] + 2;
-  } else if (minValPos == 3) {
-    if (facingDir == 0) {
-      rotLeft();
-      stopMov(timeRotLeft);
-    } else if(facingDir == 1) {
-      rotRight();
-      stopMov(2*timeRotRight);
-    } else if (facingDir == 2) {
-      rotRight();
-      stopMov(timeRotRight);
-    }
-    currPos[1] = currPos[1] - 2;
-  }
+  robotShifting(minValPos);
   facingDir = minValPos; // Updating the current direction the car is facing
-  // Movement of the car
-  movFW();
-  motorController.move(pwm, MIN_ABS_SPEED); // Managing the motor speed
-  stopMov(timeMovFW);
-  motorController.move(pwm, MIN_ABS_SPEED);
-  
   countSens = 0;
-  
   // Checking if the car is currently at the final position
+  Serial.println(currPos[0]);
+  Serial.println(currPos[1]);
   if(currPos[0] == finalPos[0] && currPos[1] == finalPos[1]){
     while(true){
       Serial.println("Goal has been reached");
@@ -348,4 +217,154 @@ int findMinValue(int arr[], int size) {
     }
   }
   return pos;
+}
+void initializeMaze() {
+  // Initialize elements of the matrix: Walls and Cells
+  for (int i = 0; i < ROWS * 2 + 1; i++) {
+    for (int j = 0; j < COLS * 2 + 1; j++) {
+      if (i % 2 == 0 || j % 2 == 0) {
+        maze[i][j] = 1; // Walls
+      } else {
+        //maze[i][j] = 0; //Empty cells
+        maze[i][j] = i - finalPos[0] + j - finalPos[1]; // Empty cells with a value dependent on its distance to the goal cell 
+      }
+    }
+  }
+  
+  /* Additional configuration to know if the car is placed
+  	 with a wall behind it.
+  */
+  if (isAWallBehind) {
+    if(facingDir == 0){
+      maze[currPos[0] + 1][currPos[1]] = -1;
+    } else if (facingDir == 1) {
+      maze[currPos[0]][currPos[1] - 1] = -1;      
+    } else if (facingDir == 2) {
+      maze[currPos[0] - 1][currPos[1]] = -1;      
+    } else {
+      maze[currPos[0]][currPos[1] + 1] = -1;      
+    }
+  }
+}
+void ultrasonicSensorsReading() {
+  do{
+  // Reading the ultrasonic sensors one by one
+    int posSens = (countSens + facingDir) % 4;
+    ultrasonicReads[posSens] = MeasureDist(PtrigL-2*countSens,PechoL-2*countSens, distSens[countSens]);
+    // Detecting walls
+    if (ultrasonicReads[posSens]) {
+       if(posSens == 0) {
+        maze[currPos[0]][currPos[1]-1] = -1;
+       } else if (posSens == 1) {
+        maze[currPos[0]-1][currPos[1]] = -1;
+       } else if (posSens == 2) {
+        maze[currPos[0]][currPos[1]+1] = -1;
+       } else if (posSens == 3) {
+        maze[currPos[0]+1][currPos[1]] = -1;
+       }
+       countWalls += 1;
+  	}
+    countSens += 1;
+    delay(70); // A delay between readings to secure good measurements
+  } while (countSens < numSens);
+}
+void floodFilling(int* mazePos){
+  // Flooding current position
+  maze[currPos[0]][currPos[1]] = maze[currPos[0]][currPos[1]] + 1;
+  // Flooding adjacent cells
+  if (currPos[0] > 1 && maze[currPos[0] - 1][currPos[1]] != -1) {
+    maze[currPos[0] - 2][currPos[1]] = maze[currPos[0] - 2][currPos[1]] + 1;
+    mazePos[0] = maze[currPos[0] - 2][currPos[1]];
+  } // Upper Row
+  if (currPos[1] < COLS * 2 && maze[currPos[0]][currPos[1] + 1] != -1) { 			
+    maze[currPos[0]][currPos[1] + 2] = maze[currPos[0]][currPos[1] + 2] + 1;
+  	mazePos[1] = maze[currPos[0]][currPos[1] + 2];
+  } // Right Column
+  if (currPos[0] < ROWS * 2 && maze[currPos[0] + 1][currPos[1]] != -1) { 	
+    maze[currPos[0] + 2][currPos[1]] = maze[currPos[0] + 2][currPos[1]] + 1;
+  	mazePos[2] = maze[currPos[0] + 2][currPos[1]];
+  } // Lower Row
+  if (currPos[1] > 1 && maze[currPos[0]][currPos[1] - 1] != -1) {
+    maze[currPos[0]][currPos[1] - 2] = maze[currPos[0]][currPos[1] - 2] + 1; 
+  	mazePos[3] = maze[currPos[0]][currPos[1] - 2];
+  } // Left Column
+}
+void robotShifting(int minValPos) {
+  // Define the time it takes to make each movement of the car
+  int timeRotLeft = 1000;
+  int timeRotRight = 1200;
+  int timeMovFW = 1000;
+  /* Rotation of the car:
+  		Depends on the minimum value between the adjacent
+        available cells the car can go to, and the direction
+        the car is currently pointing at.
+  */
+  if (minValPos == 0) {
+    if(facingDir == 1) {
+      rotLeft();
+      stopMov(timeRotLeft);
+    } else if (facingDir == 2) {
+      rotRight();
+      stopMov(2*timeRotRight);
+    } else if (facingDir == 3) {
+      rotRight();
+      stopMov(timeRotRight);
+    }
+    currPos[0] = currPos[0] - 2;
+  } else if (minValPos == 1) {
+    if (facingDir == 0) {
+      rotRight();
+      stopMov(timeRotRight);
+    } else if (facingDir == 2) {
+      rotLeft();
+      stopMov(timeRotLeft);
+    } else if (facingDir == 3) {
+      rotRight();
+      stopMov(2*timeRotRight);
+    }
+    currPos[1] = currPos[1] + 2;
+  } else if (minValPos == 2) {
+    if (facingDir == 0) {
+      rotLeft();
+      stopMov(2*timeRotRight);
+    } else if(facingDir == 1) {
+      rotRight();
+      stopMov(timeRotRight);
+    } else if (facingDir == 3) {
+      rotLeft();
+      stopMov(timeRotLeft);
+    }
+    currPos[0] = currPos[0] + 2;
+  } else if (minValPos == 3) {
+    if (facingDir == 0) {
+      rotLeft();
+      stopMov(timeRotLeft);
+    } else if(facingDir == 1) {
+      rotRight();
+      stopMov(2*timeRotRight);
+    } else if (facingDir == 2) {
+      rotRight();
+      stopMov(timeRotRight);
+    }
+    currPos[1] = currPos[1] - 2;
+  }
+    // Movement of the car
+  movFW();
+  motorController.move(pwm, MIN_ABS_SPEED); // Managing the motor speed
+  stopMov(timeMovFW);
+  motorController.move(pwm, MIN_ABS_SPEED);
+}
+void avoidPathLooping(){
+    //Avoiding dead end path loops
+  if(lastBifurcation[0] == currPos[0] && lastBifurcation[1] == currPos[1]) { //Robot is back to the bifurcation location
+    isBifurcationFound = true;
+  } else if (isBifurcationFound == false) { // Executed while getting out of the dead end path
+    maze[currPos[0]][currPos[1]] += abs(maze[currPos[0]][currPos[1]] - maze[lastBifurcation[0]][lastBifurcation[1]]);
+  }
+  if (countWalls == 1) { // Bifurcation encountered
+    lastBifurcation[0] = currPos[0]; lastBifurcation[1] = currPos[1];
+  } else if(countWalls == 3) { // Dead end found
+    isBifurcationFound = false;
+    maze[currPos[0]][currPos[1]] += abs(maze[currPos[0]][currPos[1]] - maze[lastBifurcation[0]][lastBifurcation[1]]);
+  }
 }
