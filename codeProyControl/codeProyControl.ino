@@ -122,7 +122,6 @@ void setup() {
   }
   
 void loop() {
-  short int countWalls = 0;
   do{
   // Reading the ultrasonic sensors one by one
     int posSens = (countSens + facingDir) % 4;
@@ -246,7 +245,7 @@ void loop() {
   stopMov(timeMovFW);
   motorController.move(pwm, MIN_ABS_SPEED);
   
-  countSens = 0;
+  countSens = 0; countWalls = 0;
   
   // Checking if the car is currently at the final position
   if(currPos[0] == finalPos[0] && currPos[1] == finalPos[1]){

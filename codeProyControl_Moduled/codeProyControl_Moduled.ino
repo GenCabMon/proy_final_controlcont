@@ -114,7 +114,7 @@ void loop() {
   delay(200);
   robotShifting(minValPos);
   facingDir = minValPos; // Updating the current direction the car is facing
-  countSens = 0;
+  countSens = 0; countWalls = 0;
   // Checking if the car is currently at the final position
   Serial.println(currPos[0]);
   Serial.println(currPos[1]);
