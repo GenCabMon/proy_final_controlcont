@@ -18,8 +18,8 @@
 #define PechoR 8
 #define PtrigR 9
 
-#define ENA 5 // Cable negro
-#define ENB 3 // Cable verde
+#define ENA 5 // Blue wire
+#define ENB 3 // Green wire
 #define IN1 4
 #define IN2 2
 #define IN3 7
@@ -28,38 +28,39 @@
 #include <LMotorController.h>
 
 // To manage the PWM of the L298N
-double motorSpeedFactorLeft = 1;
-double motorSpeedFactorRight = 1;
-int MIN_ABS_SPEED = 100;
-int pwm = 90;
+int pwm = 200;
+double motorSpeedFactorLeft = 0.9;
+double motorSpeedFactorRight = 0.9;
+int MIN_ABS_SPEED = 50;
 LMotorController motorController(ENA, IN1, IN2, ENB, IN4, IN3, motorSpeedFactorLeft, motorSpeedFactorRight);
 
 // Maze size
-const int ROWS = 6;
-const int COLS = 4;
+const int ROWS = 2;
+const int COLS = 2;
 int maze[ROWS*2 + 1][COLS*2 + 1]; // 2D representation of the labyrinth
 
 // Distance between sensors and walls
-const int distSensL = 20; // Left Sensor
-const int distSensF = 20; // Front Sensor
-const int distSensR = 20; // Right Sensor
+const int distSensL = 13; // Left Sensor
+const int distSensF = 13; // Front Sensor
+const int distSensR = 13; // Right Sensor
 int distSens[] = {distSensL, distSensF, distSensR};
 
 // Start and Goal Positions
-int currPos[] = {11,7}; // Initializes at starting position
+int currPos[] = {3,1}; // Initializes at starting position
 int finalPos[] = {1,1}; // Final position of the car
 
 // Initialization of readings from Ultrasonic Sensors (4 different positions)
 bool ultrasonicReads[] = {0,0,0,0}; // Left, Right, Front, Back
 
 // To know the direction the car is facing
-int facingDir = 0; // North = 0, East = 1, South = 2, West = 3
+int facingDir = 1; // North = 0, East = 1, South = 2, West = 3
 
 double duration, distance;
-int numSens = 3;
-int countSens = 0;
-int countWalls = 0;
-int lastBifurcation[] = {1,1}; //Initialized at the same value of the final position
+short int numSens = 3;
+short int countSens = 0;
+short int countWalls = 0;
+short int countTurns = 0;
+short int lastBifurcation[] = {1,1}; //Initialized at the same value of the final position
 
 // Set to True if there is a wall behind the car in the starting position
 bool isAWallBehind = true;
@@ -68,10 +69,10 @@ bool isBifurcationFound = true; //Used to avoid dead end path loops generation
 
 // Functions
 bool MeasureDist(int, int, int);
-void movFW();
+/*void movFW();
 void rotRight();
 void rotLeft();
-void stopMov(int);
+void stopMov(int);*/
 int findMinValue(int arr[], int);
 void initializeMaze();
 void ultrasonicSensorsReading();
@@ -113,7 +114,20 @@ void loop() {
   int minValPos = findMinValue(mazePos, 4);
   delay(200);
   robotShifting(minValPos);
-  facingDir = minValPos; // Updating the current direction the car is facing
+  if(facingDir != minValPos){
+    countTurns += abs(facingDir - minValPos);
+    facingDir = minValPos; // Updating the current direction the car is facing
+  }
+  if(countTurns >= 2) { //Fixing rotation error
+    countTurns = 0;
+    motorController.move(-pwm, MIN_ABS_SPEED);
+    delay(200);
+    motorController.turnLeft(pwm, false);
+    delay(200);
+    motorController.move(pwm, MIN_ABS_SPEED);
+    delay(200);
+    motorController.stopMoving();
+  }
   countSens = 0; countWalls = 0;
   // Checking if the car is currently at the final position
   Serial.println(currPos[0]);
@@ -146,23 +160,21 @@ bool MeasureDist(int sensorTrig, int sensorEcho, int distSens)
     return false;
   }
 }
-
+/*
 void movFW()
 {
   // Uses the L298N inputs to make the car move forward
   Serial.println("movFW");
-  analogWrite(ENA, pwm);
-  analogWrite(ENB, pwm);
-  digitalWrite(5,LOW); //IN1
-  digitalWrite(4,HIGH); //IN2
-  digitalWrite(7,LOW); //IN3
-  digitalWrite(6,HIGH); //IN4 
+  digitalWrite(IN1,LOW); //IN1
+  digitalWrite(IN2,HIGH); //IN2
+  digitalWrite(IN3,LOW); //IN3
+  digitalWrite(IN4,HIGH); //IN4 
 }
 void rotRight()
 {
   /* Uses the L298N inputs to make the car rotate 
   on its own axis in a clockwise direction.
-  */
+  *//*
   Serial.println("rotRight");
   analogWrite(ENA, pwm);
   analogWrite(ENB, pwm);
@@ -175,7 +187,7 @@ void rotLeft()
 {
   /* Uses the L298N inputs to make the car rotate 
   on its own axis in a counterclockwise direction.
-  */
+  *//*
   Serial.println("rotLeft");
   analogWrite(ENA, pwm);
   analogWrite(ENB, pwm);
@@ -188,7 +200,7 @@ void stopMov(int timeBeforeStop)
 {
   /* Uses the L298N inputs to stop the car's current
   	 moving action after a delay received as a parameter.
-  */
+  *//*
   Serial.println("stopMov");
   Serial.println(timeBeforeStop);
   delay(timeBeforeStop);
@@ -198,7 +210,7 @@ void stopMov(int timeBeforeStop)
   digitalWrite(IN2,LOW);
   digitalWrite(IN3,LOW);
   digitalWrite(IN4,LOW);
-}
+}*/
 int findMinValue(int arr[], int size) {
   /* Receives a list of values and its size. Returns the position
   	 of the minimum nonnegative value of that list.
@@ -222,8 +234,10 @@ void initializeMaze() {
   // Initialize elements of the matrix: Walls and Cells
   for (int i = 0; i < ROWS * 2 + 1; i++) {
     for (int j = 0; j < COLS * 2 + 1; j++) {
-      if (i % 2 == 0 || j % 2 == 0) {
-        maze[i][j] = 1; // Walls
+      if (i == 0 || j == 0 || i == ROWS * 2 || j == COLS * 2) {
+        maze[i][j] = -1; // Borders of the maze
+      } else if (i % 2 == 0 || j % 2 == 0) {
+        maze[i][j] = 1; // Possible wall locations
       } else {
         //maze[i][j] = 0; //Empty cells
         maze[i][j] = i - finalPos[0] + j - finalPos[1]; // Empty cells with a value dependent on its distance to the goal cell 
@@ -291,9 +305,9 @@ void floodFilling(int* mazePos){
 }
 void robotShifting(int minValPos) {
   // Define the time it takes to make each movement of the car
-  int timeRotLeft = 1000;
-  int timeRotRight = 1200;
-  int timeMovFW = 1000;
+  int timeRotLeft = 1250;
+  int timeRotRight = 1250;
+  int timeMovFW = 650;
   /* Rotation of the car:
   		Depends on the minimum value between the adjacent
         available cells the car can go to, and the direction
@@ -301,58 +315,58 @@ void robotShifting(int minValPos) {
   */
   if (minValPos == 0) {
     if(facingDir == 1) {
-      rotLeft();
-      stopMov(timeRotLeft);
+      motorController.turnLeft(pwm, false);
+      delay(timeRotLeft);
     } else if (facingDir == 2) {
-      rotRight();
-      stopMov(2*timeRotRight);
+      motorController.turnRight(pwm, false);
+      delay(2*timeRotRight);
     } else if (facingDir == 3) {
-      rotRight();
-      stopMov(timeRotRight);
+      motorController.turnRight(pwm, false);
+      delay(timeRotRight);
     }
     currPos[0] = currPos[0] - 2;
   } else if (minValPos == 1) {
     if (facingDir == 0) {
-      rotRight();
-      stopMov(timeRotRight);
+      motorController.turnRight(pwm, false);
+      delay(timeRotRight);
     } else if (facingDir == 2) {
-      rotLeft();
-      stopMov(timeRotLeft);
+      motorController.turnLeft(pwm, false);
+      delay(timeRotLeft);
     } else if (facingDir == 3) {
-      rotRight();
-      stopMov(2*timeRotRight);
+      motorController.turnRight(pwm, false);
+      delay(2*timeRotRight);
     }
     currPos[1] = currPos[1] + 2;
   } else if (minValPos == 2) {
     if (facingDir == 0) {
-      rotLeft();
-      stopMov(2*timeRotRight);
+      motorController.turnLeft(pwm, false);
+      delay(2*timeRotRight);
     } else if(facingDir == 1) {
-      rotRight();
-      stopMov(timeRotRight);
+      motorController.turnRight(pwm, false);
+      delay(timeRotRight);
     } else if (facingDir == 3) {
-      rotLeft();
-      stopMov(timeRotLeft);
+      motorController.turnLeft(pwm, false);
+      delay(timeRotLeft);
     }
     currPos[0] = currPos[0] + 2;
   } else if (minValPos == 3) {
     if (facingDir == 0) {
-      rotLeft();
-      stopMov(timeRotLeft);
+      motorController.turnLeft(pwm, false);
+      delay(timeRotLeft);
     } else if(facingDir == 1) {
-      rotRight();
-      stopMov(2*timeRotRight);
+      motorController.turnRight(pwm, false);
+      delay(2*timeRotRight);
     } else if (facingDir == 2) {
-      rotRight();
-      stopMov(timeRotRight);
+      motorController.turnRight(pwm, false);
+      delay(timeRotRight);
     }
     currPos[1] = currPos[1] - 2;
   }
     // Movement of the car
-  movFW();
-  motorController.move(pwm, MIN_ABS_SPEED); // Managing the motor speed
-  stopMov(timeMovFW);
   motorController.move(pwm, MIN_ABS_SPEED);
+  delay(timeMovFW);
+  motorController.stopMoving();
+  delay(500);
 }
 void avoidPathLooping(){
     //Avoiding dead end path loops
