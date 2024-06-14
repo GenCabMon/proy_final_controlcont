@@ -35,25 +35,25 @@ int MIN_ABS_SPEED = 50;
 LMotorController motorController(ENA, IN1, IN2, ENB, IN4, IN3, motorSpeedFactorLeft, motorSpeedFactorRight);
 
 // Maze size
-const int ROWS = 2;
-const int COLS = 2;
+const int ROWS = 6;
+const int COLS = 4;
 int maze[ROWS*2 + 1][COLS*2 + 1]; // 2D representation of the labyrinth
 
 // Distance between sensors and walls
-const int distSensL = 13; // Left Sensor
-const int distSensF = 13; // Front Sensor
-const int distSensR = 13; // Right Sensor
+const int distSensL = 15; // Left Sensor
+const int distSensF = 15; // Front Sensor
+const int distSensR = 15; // Right Sensor
 int distSens[] = {distSensL, distSensF, distSensR};
 
 // Start and Goal Positions
-int currPos[] = {3,1}; // Initializes at starting position
+int currPos[] = {11,7}; // Initializes at starting position
 int finalPos[] = {1,1}; // Final position of the car
 
 // Initialization of readings from Ultrasonic Sensors (4 different positions)
 bool ultrasonicReads[] = {0,0,0,0}; // Left, Right, Front, Back
 
 // To know the direction the car is facing
-int facingDir = 1; // North = 0, East = 1, South = 2, West = 3
+int facingDir = 0; // North = 0, East = 1, South = 2, West = 3
 
 double duration, distance;
 short int numSens = 3;
